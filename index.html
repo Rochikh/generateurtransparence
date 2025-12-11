@@ -8,9 +8,9 @@
         :root {
             --bg-color: #FAFAFA;
             --text-color: #111;
-            --accent-color: #4F46E5; /* Indigo vibrant */
-            --organic-color: #FCA5A5; /* Teinte chaude/humaine */
-            --geometric-color: #60A5FA; /* Teinte froide/machine */
+            --accent-color: #4F46E5;
+            --organic-color: #FCA5A5;
+            --geometric-color: #60A5FA;
         }
 
         body {
@@ -91,13 +91,11 @@
             padding: 20px 0;
         }
 
-        /* La forme changeante */
         .shape-display {
             width: 120px;
             height: 120px;
             background: linear-gradient(135deg, var(--organic-color), var(--geometric-color));
             transition: all 0.5s ease;
-            /* Forme initiale organique */
             border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
             opacity: 0.9;
             display: flex;
@@ -168,7 +166,6 @@
             user-select: none;
         }
         
-        /* On met la majuscule visuellement, mais la donnée reste lowercase */
         .chip::first-letter {
             text-transform: uppercase;
         }
@@ -216,7 +213,7 @@
         }
         
         .success {
-            background-color: #10B981 !important; /* Vert succès */
+            background-color: #10B981 !important;
         }
 
         @media (max-width: 600px) {
@@ -237,7 +234,8 @@
             <span class="section-label">Tu as bossé sur quoi ?</span>
             <div class="media-selector" id="mediaSelector">
                 <button class="media-btn active" data-value="Texte">Texte</button>
-                <button class="media-btn" data-value="Visuel">Visuel</button>
+                <button class="media-btn" data-value="Image">Image</button>
+                <button class="media-btn" data-value="Vidéo">Vidéo</button>
                 <button class="media-btn" data-value="Code">Code</button>
                 <button class="media-btn" data-value="Audio">Audio</button>
             </div>
@@ -279,12 +277,28 @@
     </div>
 
     <script>
-        // --- DONNÉES ---
-        // Les chips sont en minuscules pour s'insérer dans les phrases
-        const ZONES = {
+        // --- CONFIGURATION DU VOCABULAIRE ---
+        // On définit des "groupes" de média pour adapter les mots
+        const MEDIA_TYPES = {
+            'Texte': { gender: 'Ce', type: 'textual' },
+            'Code': { gender: 'Ce', type: 'textual' },
+            'Image': { gender: 'Cette', type: 'visual' },
+            'Vidéo': { gender: 'Cette', type: 'visual' },
+            'Audio': { gender: 'Cet', type: 'visual' }
+        };
+
+        // Données de base des zones
+        const ZONES_DATA = {
             ASSISTANCE: { label: 'Assistance', chips: ['relu·e', 'corrigé·e', 'documenté·e', 'inspiré·e', 'structuré·e', 'traduit·e'] },
             HYBRIDATION: { label: 'Hybridation', chips: ['co-écrit·e', 'complété·e', 'reformulé·e', 'mixé·e', 'adapté·e'] },
             GENERATION: { label: 'Génération', chips: ['prompté·e', 'généré·e', 'curaté·e', 'sélectionné·e', 'retouché·e'] }
+        };
+
+        // Dictionnaire de substitution pour les médias visuels (Image/Vidéo/Audio)
+        const VISUAL_REPLACEMENTS = {
+            'co-écrit·e': 'co-réalisé·e',
+            'relu·e': 'vérifié·e', // "Relire" une image ne se dit pas trop
+            'traduit·e': 'adapté·e' // "Traduire" une image est rare
         };
 
         // --- ÉTAT GLOBAL ---
@@ -312,7 +326,7 @@
             generateSentence();
         }
 
-        // 1. Gestion du Slider et des Zones
+        // 1. Gestion du Slider
         slider.addEventListener('input', (e) => {
             state.sliderValue = parseInt(e.target.value);
             updateVisual();
@@ -324,59 +338,73 @@
 
             if (newZone !== state.currentZone) {
                 state.currentZone = newZone;
-                state.selectedChips = []; // Reset chips quand on change de zone
+                state.selectedChips = []; 
                 renderChips();
             }
             generateSentence();
         });
 
-        // 2. Mise à jour visuelle (Organique vs Géométrique)
+        // 2. Visuel (Blob vs Carré)
         function updateVisual() {
             const val = state.sliderValue;
-            
-            // Interpolation du border-radius
-            // 0% = Organique (valeurs randomisées pour effet blob)
-            // 100% = Géométrique (0px)
             const r1 = 60 - (val * 0.6); 
             const r2 = 40 - (val * 0.4); 
             const r3 = 30 - (val * 0.3);
             const r4 = 70 - (val * 0.7);
 
-            // Si on est proche de 100, on force le carré parfait
             const borderRadius = val > 90 
                 ? '4px' 
                 : `${r1}% ${r2}% ${r3}% ${r4}% / ${r1}% ${r3}% ${r4}% ${r2}%`;
 
             visualShape.style.borderRadius = borderRadius;
-            zoneLabel.textContent = ZONES[state.currentZone].label;
+            zoneLabel.textContent = ZONES_DATA[state.currentZone].label;
         }
 
-        // 3. Gestion du support (Media)
+        // 3. Changement de Média (Reset des chips pour mettre à jour le vocabulaire)
         mediaBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 mediaBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 state.media = btn.getAttribute('data-value');
+                
+                // On rafraîchit les chips car le vocabulaire change peut-être
+                // (ex: passer de Texte à Image change "co-écrit" en "co-réalisé")
+                // On garde la sélection si le mot existe, sinon on vide
+                renderChips(); 
                 generateSentence();
             });
         });
 
-        // 4. Gestion des Chips
+        // 4. Affichage des Chips (avec adaptation intelligente)
         function renderChips() {
             chipsContainer.innerHTML = '';
-            const currentChipsList = ZONES[state.currentZone].chips;
+            const rawChips = ZONES_DATA[state.currentZone].chips;
+            const mediaType = MEDIA_TYPES[state.media].type;
 
-            currentChipsList.forEach(chipText => {
+            rawChips.forEach(originalWord => {
+                let displayWord = originalWord;
+
+                // Si c'est un média visuel, on vérifie s'il faut changer le mot
+                if (mediaType === 'visual' && VISUAL_REPLACEMENTS[originalWord]) {
+                    displayWord = VISUAL_REPLACEMENTS[originalWord];
+                }
+
                 const chip = document.createElement('div');
                 chip.className = 'chip';
-                chip.textContent = chipText; // Sera capitalisé par CSS
+                chip.textContent = displayWord; 
+
+                // On gère la classe selected
+                if (state.selectedChips.includes(displayWord)) {
+                    chip.classList.add('selected');
+                }
                 
                 chip.addEventListener('click', () => {
                     chip.classList.toggle('selected');
-                    if (state.selectedChips.includes(chipText)) {
-                        state.selectedChips = state.selectedChips.filter(c => c !== chipText);
+                    // Logique de toggle
+                    if (state.selectedChips.includes(displayWord)) {
+                        state.selectedChips = state.selectedChips.filter(c => c !== displayWord);
                     } else {
-                        state.selectedChips.push(chipText);
+                        state.selectedChips.push(displayWord);
                     }
                     generateSentence();
                 });
@@ -385,10 +413,10 @@
             });
         }
 
-        // 5. Générateur de phrase élaborée
+        // 5. Générateur de phrase (Grammaire adaptée)
         function generateSentence() {
-            // Création de la liste des actions (ex: "relu·e, corrigé·e et traduit·e")
-            let actionsList = [...state.selectedChips]; // Copie pour ne pas muter l'état
+            // Liste des actions
+            let actionsList = [...state.selectedChips];
             let actionsString = '...';
             
             if (actionsList.length > 0) {
@@ -402,21 +430,24 @@
 
             let sentence = '';
             const m = state.media.toLowerCase(); 
+            // Récupère "Ce", "Cette" ou "Cet" selon le média
+            const determiner = MEDIA_TYPES[state.media].gender; 
+            const determinerLower = determiner.toLowerCase();
 
             // SCÉNARIO 1 : ASSISTANCE
             if (state.currentZone === 'ASSISTANCE') {
                 if (state.selectedChips.length === 0) {
                     sentence = `Conception et réalisation garanties 100% humaines. L'IA a été utilisée uniquement comme outil de support technique ponctuel.`;
                 } else {
-                    sentence = `Paternité humaine garantie. Ce ${m} a été conçu par l'auteur·ice, l'IA intervenant uniquement pour qu'il soit ${actionsString}.`;
+                    sentence = `Paternité humaine garantie. ${determiner} ${m} a été conçu·e par l'auteur·ice, l'IA intervenant uniquement pour qu'il/elle soit ${actionsString}.`;
                 }
             } 
             // SCÉNARIO 2 : HYBRIDATION
             else if (state.currentZone === 'HYBRIDATION') {
                  if (state.selectedChips.length === 0) {
-                    sentence = `Symbiose créative : une production hybride où l'intelligence humaine et l'IA ont fusionné pour créer ce ${m}.`;
+                    sentence = `Symbiose créative : une production hybride où l'intelligence humaine et l'IA ont fusionné pour créer ${determinerLower} ${m}.`;
                 } else {
-                    sentence = `Co-création assumée. Ce ${m} est le fruit d'une collaboration Humain-IA : il a été ${actionsString} conjointement.`;
+                    sentence = `Co-création assumée. ${determiner} ${m} est le fruit d'une collaboration Humain-IA : il/elle a été ${actionsString} conjointement.`;
                 }
             } 
             // SCÉNARIO 3 : GÉNÉRATION
@@ -424,21 +455,19 @@
                 if (state.selectedChips.length === 0) {
                     sentence = `Contenu synthétique généré par IA, produit sous la direction artistique stricte de l'humain.`;
                 } else {
-                    sentence = `Génération synthétique pilotée. La matière brute de ce ${m} est issue de l'IA, mais a été ${actionsString} par l'auteur·ice.`;
+                    sentence = `Génération synthétique pilotée. La matière brute de ${determinerLower} ${m} est issue de l'IA, mais a été ${actionsString} par l'auteur·ice.`;
                 }
             }
 
             outputSentence.textContent = sentence;
         }
 
-        // 6. Bouton Copier
         copyBtn.addEventListener('click', () => {
             const textToCopy = outputSentence.textContent;
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = copyBtn.textContent;
                 copyBtn.textContent = "C'est copié !";
                 copyBtn.classList.add('success');
-                
                 setTimeout(() => {
                     copyBtn.textContent = originalText;
                     copyBtn.classList.remove('success');
@@ -446,9 +475,7 @@
             });
         });
 
-        // Démarrage
         init();
-
     </script>
 </body>
 </html>
